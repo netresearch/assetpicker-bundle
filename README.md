@@ -38,7 +38,7 @@ Requirements: PHP 8.4 or later, Symfony 8, `netresearch/assetpicker` 2.x.
             limit: 1
     ```
 
-    When several configuration files set `asset_picker` (for example one per environment), they are merged recursively.
+    When several configuration files set `asset_picker` (for example one per environment), they are merged: maps such as `storages` recursively, while a list such as `pick.types` or an empty value replaces the earlier value as a whole. `types: [file]` in a later file therefore leaves `[file]`, not `[file, dir]`.
 
 4. (Optional) To use the proxy, import its route in `config/routes/asset_picker.yaml`. `assetpicker_config()` then sets `proxy.url` to the route automatically, unless you configure `proxy.url` yourself:
 

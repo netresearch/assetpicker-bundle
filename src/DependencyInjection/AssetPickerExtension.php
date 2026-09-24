@@ -25,7 +25,9 @@ use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
  *
  * The configuration is the AssetPicker JavaScript configuration and is passed
  * to the browser as is, so it is not validated here: every configuration file
- * that sets `asset_picker` is merged recursively, later files winning.
+ * that sets `asset_picker` is merged, later files winning. Maps are merged
+ * recursively; a list (such as `pick.types`) or an empty value replaces the
+ * earlier value as a whole.
  */
 final class AssetPickerExtension extends Extension
 {
@@ -37,7 +39,29 @@ final class AssetPickerExtension extends Extension
         $loader = new PhpFileLoader($container, new FileLocator(\dirname(__DIR__, 2) . '/config'));
         $loader->load('services.php');
 
-        $container->setParameter('assetpicker', array_replace_recursive([], ...$configs));
+        $container->setParameter('assetpicker', array_reduce($configs, self::merge(...), []));
+    }
+
+    /**
+     * Merge $override onto $base: keys present in both are merged recursively
+     * when both values are non-empty maps (`array_is_list()` is true for
+     * an empty array), otherwise the override wins.
+     *
+     * @param array<mixed> $base
+     * @param array<mixed> $override
+     *
+     * @return array<mixed>
+     */
+    private static function merge(array $base, array $override): array
+    {
+        foreach ($override as $key => $value) {
+            $current = $base[$key] ?? null;
+            $base[$key] = \is_array($value) && \is_array($current) && !array_is_list($value) && !array_is_list($current)
+                ? self::merge($current, $value)
+                : $value;
+        }
+
+        return $base;
     }
 
     public function getAlias(): string
