@@ -1,0 +1,20 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  tests:
+    name: Tests
+    uses: netresearch/.github/.github/workflows/php-ci.yml@main
+    permissions:
+      contents: read
+    with:
+      # netresearch/assetpicker 2.x and Symfony 8 require PHP 8.4.
+      php-versions: '["8.4","8.5"]'
+      run-phpstan: true
+      run-phpunit: true

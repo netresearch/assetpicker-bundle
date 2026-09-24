@@ -1,30 +1,32 @@
 <?php
+
 /**
  * See class comment
  *
- * PHP Version 5
- *
  * @category Netresearch
  * @package  Netresearch\AssetPickerBundle
  * @author   Christian Opitz <christian.opitz@netresearch.de>
- * @license  http://www.netresearch.de Netresearch Copyright
- * @link     http://www.netresearch.de
+ * @license  https://opensource.org/licenses/MIT MIT
+ * @link     https://github.com/netresearch/assetpicker-bundle
  */
 
+declare(strict_types=1);
+
 namespace Netresearch\AssetPickerBundle;
+
 use Symfony\Component\HttpKernel\Bundle\Bundle;
 
 /**
- * Class AssetPickerBundle
- *
- * @category Netresearch
- * @package  Netresearch\AssetPickerBundle
- * @author   Christian Opitz <christian.opitz@netresearch.de>
- * @license  http://www.netresearch.de Netresearch Copyright
- * @link     http://www.netresearch.de
+ * Integrates AssetPicker into a Symfony application: the proxy route and the
+ * assetpicker_config() Twig function.
  */
-class AssetPickerBundle extends Bundle
+final class AssetPickerBundle extends Bundle
 {
+    /**
+     * The bundle root, so @AssetPickerBundle/config/... resolves to config/.
+     */
+    public function getPath(): string
+    {
+        return \dirname(__DIR__);
+    }
 }
-
-?>
