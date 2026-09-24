@@ -1,0 +1,39 @@
+name: Release
+
+# Creates the GitHub Release for a pushed bare-semver tag (2.0.1, not v2.0.1):
+# source archive, SBOMs, build provenance and Cosign signatures, built inside
+# the org reusable. Packagist imports the tag through its own webhook,
+# independently of this workflow.
+
+on:
+  push:
+    tags:
+      # GitHub tag filters are globs: `.` is literal, `*` matches any run of
+      # characters, so a v-prefixed tag does not match and a suffixed tag such
+      # as 2.0.1-rc.1 does. The reusable publishes a suffixed tag as a
+      # pre-release, never as Latest.
+      - '[0-9]*.[0-9]*.[0-9]*'
+
+permissions: {}
+
+jobs:
+  release:
+    uses: netresearch/.github/.github/workflows/release-source-archive.yml@main
+    permissions:
+      contents: write        # create the release
+      id-token: write        # Sigstore OIDC identity
+      attestations: write    # file the attestations with GitHub
+
+  # The release is created with GITHUB_TOKEN, so no `release` event starts
+  # anything afterwards; checks on the published release run as jobs here.
+  verify:
+    needs: release
+    uses: netresearch/.github/.github/workflows/verify-release.yml@main
+    permissions:
+      contents: read
+      attestations: read
+      id-token: write
+    with:
+      tag: ${{ github.ref_name }}
+      identity-regexp: '^https://github\.com/netresearch/\.github/\.github/workflows/release-source-archive\.yml@'
+      signer-workflow: netresearch/.github/.github/workflows/release-source-archive.yml
