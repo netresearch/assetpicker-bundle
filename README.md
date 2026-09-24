@@ -103,6 +103,8 @@ The Twig function `assetpicker_config()` returns the `asset_picker` configuratio
 
 Storages that send no CORS headers, such as EnterMediaDB, need the proxy. The route forwards the request to the URL in its `to` parameter with the application's `http_client` service and returns the upstream response. Redirects are not followed; their `Location` is rewritten to go through the route again. A request without `to` is answered with `400 Bad Request`.
 
+The route runs on your application's domain, so the browser sends your application's cookies and HTTP authentication along. The proxy does not forward them: `Cookie` and `Authorization` are removed from the forwarded request, and `Set-Cookie` from the upstream response. A storage that needs a session cookie or an `Authorization` header therefore cannot be used through the proxy.
+
 The proxy forwards to any URL it is given. Restrict access to the route with your firewall and `access_control`, and configure the `http_client` service accordingly, for example with timeouts or a decorating `Symfony\Component\HttpClient\NoPrivateNetworkHttpClient` when the proxy must not reach internal hosts.
 
 ## Upgrading from 1.x
