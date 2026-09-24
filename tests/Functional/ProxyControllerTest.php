@@ -11,10 +11,19 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\HttpClient\Response\MockResponse;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 #[CoversClass(ProxyController::class)]
 final class ProxyControllerTest extends WebTestCase
 {
+    /**
+     * A public address as the target host. The proxy's client checks the
+     * address before the (mocked) request, and a host name would need DNS;
+     * the documentation ranges (192.0.2.0/24 and so on) are in
+     * IpUtils::PRIVATE_SUBNETS and would be refused.
+     */
+    private const string PUBLIC_HOST = 'https://93.184.215.14';
+
     private KernelBrowser $client;
 
     private RecordingMockResponseFactory $upstream;
@@ -34,7 +43,7 @@ final class ProxyControllerTest extends WebTestCase
             'response_headers' => ['content-type' => 'image/png'],
         ]));
 
-        $this->client->request('GET', '/assetpicker?to=' . urlencode('https://em.example.org/app/a.png?size=large'));
+        $this->client->request('GET', '/assetpicker?to=' . urlencode(self::PUBLIC_HOST . '/app/a.png?size=large'));
 
         $response = $this->client->getResponse();
         self::assertSame(200, $response->getStatusCode());
@@ -43,7 +52,7 @@ final class ProxyControllerTest extends WebTestCase
 
         self::assertCount(1, $this->upstream->requests);
         self::assertSame('GET', $this->upstream->requests[0]['method']);
-        self::assertSame('https://em.example.org/app/a.png?size=large', $this->upstream->requests[0]['url']);
+        self::assertSame(self::PUBLIC_HOST . '/app/a.png?size=large', $this->upstream->requests[0]['url']);
     }
 
     public function testForwardsMethodAndBody(): void
@@ -52,7 +61,7 @@ final class ProxyControllerTest extends WebTestCase
 
         $this->client->request(
             'POST',
-            '/assetpicker?to=' . urlencode('https://em.example.org/app/login'),
+            '/assetpicker?to=' . urlencode(self::PUBLIC_HOST . '/app/login'),
             server: ['CONTENT_TYPE' => 'application/json'],
             content: '{"user":"u"}',
         );
@@ -68,7 +77,7 @@ final class ProxyControllerTest extends WebTestCase
 
         $this->client->request(
             'GET',
-            '/assetpicker?to=' . urlencode('https://em.example.org/app/a.json'),
+            '/assetpicker?to=' . urlencode(self::PUBLIC_HOST . '/app/a.json'),
             server: [
                 'HTTP_COOKIE' => 'PHPSESSID=app-session',
                 'HTTP_AUTHORIZATION' => 'Basic ' . base64_encode('app-user:app-password'),
@@ -97,7 +106,7 @@ final class ProxyControllerTest extends WebTestCase
             ],
         ]));
 
-        $this->client->request('GET', '/assetpicker?to=' . urlencode('https://em.example.org/app/a.png'));
+        $this->client->request('GET', '/assetpicker?to=' . urlencode(self::PUBLIC_HOST . '/app/a.png'));
 
         $response = $this->client->getResponse();
         self::assertSame('image/png', $response->headers->get('content-type'));
@@ -142,7 +151,7 @@ final class ProxyControllerTest extends WebTestCase
 
         $this->client->request(
             'GET',
-            'https://app.example.test' . $proxyPath . '?to=' . urlencode('https://em.example.org/app/a.png'),
+            'https://app.example.test' . $proxyPath . '?to=' . urlencode(self::PUBLIC_HOST . '/app/a.png'),
             server: ['SCRIPT_NAME' => '/index.php', 'SCRIPT_FILENAME' => '/srv/app/public/index.php'],
         );
 
@@ -169,5 +178,83 @@ final class ProxyControllerTest extends WebTestCase
 
         self::assertSame(400, $this->client->getResponse()->getStatusCode());
         self::assertSame([], $this->upstream->requests);
+    }
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function privateTargets(): iterable
+    {
+        yield 'loopback' => ['https://127.0.0.1/admin'];
+        yield 'loopback IPv6' => ['https://[::1]/admin'];
+        yield 'localhost' => ['https://localhost/admin'];
+        yield 'RFC 1918 10/8' => ['https://10.0.0.1/'];
+        yield 'RFC 1918 172.16/12' => ['https://172.16.0.1/'];
+        yield 'RFC 1918 192.168/16' => ['https://192.168.1.1/'];
+        yield 'link-local, cloud metadata' => ['https://169.254.169.254/latest/meta-data/'];
+        yield 'link-local IPv6' => ['https://[fe80::1]/'];
+        yield 'unique local IPv6' => ['https://[fd00::1]/'];
+        // .invalid never resolves (RFC 6761); an address that cannot be
+        // checked is refused.
+        yield 'unresolvable host' => ['https://assetpicker.invalid/'];
+    }
+
+    #[DataProvider('privateTargets')]
+    public function testRefusesAPrivateTargetWithoutRequestingIt(string $target): void
+    {
+        $this->client->request('GET', '/assetpicker?to=' . urlencode($target));
+
+        self::assertSame(403, $this->client->getResponse()->getStatusCode());
+        self::assertSame([], $this->upstream->requests, 'the target must not be requested');
+    }
+
+    public function testRefusesATargetWhoseConnectionEndsUpOnAPrivateAddress(): void
+    {
+        // The address the client connected to (primary_ip) is checked too.
+        $this->upstream->enqueue(new MockResponse('INTERNAL', ['http_code' => 200, 'primary_ip' => '10.0.0.5']));
+
+        $this->client->request('GET', '/assetpicker?to=' . urlencode(self::PUBLIC_HOST . '/app/a.png'));
+
+        self::assertSame(403, $this->client->getResponse()->getStatusCode());
+    }
+
+    public function testRefusesARedirectFromAPublicTargetToAPrivateAddress(): void
+    {
+        $private = 'https://169.254.169.254/latest/meta-data/';
+        $this->upstream->enqueue(new MockResponse('', [
+            'http_code' => 302,
+            'response_headers' => ['location' => $private],
+        ]));
+
+        // The redirect is not followed but sent back to the browser, pointing
+        // at the proxy route again ...
+        $this->client->request('GET', 'https://app.example.test/assetpicker?to=' . urlencode(self::PUBLIC_HOST . '/app/a.png'));
+        $location = $this->client->getResponse()->headers->get('location');
+        self::assertSame('https://app.example.test/assetpicker?to=' . urlencode($private), $location);
+
+        // ... where the redirect target is checked like any other target.
+        $this->client->request('GET', $location);
+        self::assertSame(403, $this->client->getResponse()->getStatusCode());
+        self::assertCount(1, $this->upstream->requests, 'the private redirect target must not be requested');
+    }
+
+    public function testATransportErrorThatIsNotARefusalIsNotReportedAsForbidden(): void
+    {
+        $this->upstream->enqueue(new MockResponse([new \RuntimeException('Connection timed out')]));
+
+        $this->client->request('GET', '/assetpicker?to=' . urlencode(self::PUBLIC_HOST . '/app/a.png'));
+
+        self::assertSame(500, $this->client->getResponse()->getStatusCode());
+    }
+
+    public function testTheApplicationsHttpClientStillReachesPrivateAddresses(): void
+    {
+        $this->upstream->enqueue(new MockResponse('INTERNAL', ['http_code' => 200]));
+        $httpClient = self::getContainer()->get('http_client');
+        self::assertInstanceOf(HttpClientInterface::class, $httpClient);
+
+        $response = $httpClient->request('GET', 'https://10.0.0.1/internal');
+
+        self::assertSame('INTERNAL', $response->getContent());
+        self::assertSame('https://10.0.0.1/internal', $this->upstream->requests[0]['url']);
     }
 }

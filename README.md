@@ -101,11 +101,24 @@ The Twig function `assetpicker_config()` returns the `asset_picker` configuratio
 
 ### The proxy
 
-Storages that send no CORS headers, such as EnterMediaDB, need the proxy. The route forwards the request to the URL in its `to` parameter with the application's `http_client` service and returns the upstream response. Redirects are not followed; their `Location` is rewritten to go through the route again. A request without `to` is answered with `400 Bad Request`.
+Storages that send no CORS headers, such as EnterMediaDB, need the proxy. The route forwards the request to the URL in its `to` parameter with the application's `http_client` service, wrapped as described below, and returns the upstream response. Redirects are not followed; their `Location` is rewritten to go through the route again. A request without `to` is answered with `400 Bad Request`.
 
 The route runs on your application's domain, so the browser sends your application's cookies and HTTP authentication along. The proxy does not forward them: `Cookie` and `Authorization` are removed from the forwarded request, and `Set-Cookie` from the upstream response. A storage that needs a session cookie or an `Authorization` header therefore cannot be used through the proxy.
 
-The proxy forwards to any URL it is given. Restrict access to the route with your firewall and `access_control`, and configure the `http_client` service accordingly, for example with timeouts or a decorating `Symfony\Component\HttpClient\NoPrivateNetworkHttpClient` when the proxy must not reach internal hosts.
+Any visitor who can reach the route chooses the target. The proxy therefore refuses targets on private, loopback, link-local and other non-public addresses (`127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16` including cloud metadata endpoints, `::1`, `fc00::/7`, `fe80::/10` and the rest of `Symfony\Component\HttpFoundation\IpUtils::PRIVATE_SUBNETS`), and hosts whose name does not resolve. It sends its requests through the service `assetpicker.proxy.http_client`, a `Symfony\Component\HttpClient\NoPrivateNetworkHttpClient` around your `http_client`: it resolves the host name itself, sends the request to the address it checked, and checks the address the connection actually used. A refused target is answered with `403 Forbidden` and is not requested. Redirects are not followed by the proxy; the browser follows the rewritten `Location` through the route again, where the redirect target is checked like any other target. The `http_client` service itself is not changed, so the rest of your application can still reach internal hosts.
+
+If a storage is on an internal host, redefine `assetpicker.proxy.http_client` in your `config/services.yaml` with that host's addresses as the allow list (`symfony/http-client` 8.1 or later); every other internal address stays refused:
+
+```yaml
+services:
+    assetpicker.proxy.http_client:
+        class: Symfony\Component\HttpClient\NoPrivateNetworkHttpClient
+        arguments:
+            $client: '@http_client'
+            $allowList: ['10.1.2.3']
+```
+
+The proxy still reaches every public host. Restrict access to the route with your firewall and `access_control` if that is not wanted.
 
 ## Upgrading from 1.x
 
