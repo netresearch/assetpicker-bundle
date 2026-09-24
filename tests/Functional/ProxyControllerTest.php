@@ -184,18 +184,18 @@ final class ProxyControllerTest extends WebTestCase
      */
     public static function privateTargets(): iterable
     {
-        yield 'loopback' => ['http://127.0.0.1/admin'];
-        yield 'loopback IPv6' => ['http://[::1]/admin'];
-        yield 'localhost' => ['http://localhost/admin'];
-        yield 'RFC 1918 10/8' => ['http://10.0.0.1/'];
-        yield 'RFC 1918 172.16/12' => ['http://172.16.0.1/'];
-        yield 'RFC 1918 192.168/16' => ['http://192.168.1.1/'];
-        yield 'link-local, cloud metadata' => ['http://169.254.169.254/latest/meta-data/'];
-        yield 'link-local IPv6' => ['http://[fe80::1]/'];
-        yield 'unique local IPv6' => ['http://[fd00::1]/'];
+        yield 'loopback' => ['https://127.0.0.1/admin'];
+        yield 'loopback IPv6' => ['https://[::1]/admin'];
+        yield 'localhost' => ['https://localhost/admin'];
+        yield 'RFC 1918 10/8' => ['https://10.0.0.1/'];
+        yield 'RFC 1918 172.16/12' => ['https://172.16.0.1/'];
+        yield 'RFC 1918 192.168/16' => ['https://192.168.1.1/'];
+        yield 'link-local, cloud metadata' => ['https://169.254.169.254/latest/meta-data/'];
+        yield 'link-local IPv6' => ['https://[fe80::1]/'];
+        yield 'unique local IPv6' => ['https://[fd00::1]/'];
         // .invalid never resolves (RFC 6761); an address that cannot be
         // checked is refused.
-        yield 'unresolvable host' => ['http://assetpicker.invalid/'];
+        yield 'unresolvable host' => ['https://assetpicker.invalid/'];
     }
 
     #[DataProvider('privateTargets')]
@@ -219,7 +219,7 @@ final class ProxyControllerTest extends WebTestCase
 
     public function testRefusesARedirectFromAPublicTargetToAPrivateAddress(): void
     {
-        $private = 'http://169.254.169.254/latest/meta-data/';
+        $private = 'https://169.254.169.254/latest/meta-data/';
         $this->upstream->enqueue(new MockResponse('', [
             'http_code' => 302,
             'response_headers' => ['location' => $private],
@@ -252,9 +252,9 @@ final class ProxyControllerTest extends WebTestCase
         $httpClient = self::getContainer()->get('http_client');
         self::assertInstanceOf(HttpClientInterface::class, $httpClient);
 
-        $response = $httpClient->request('GET', 'http://10.0.0.1/internal');
+        $response = $httpClient->request('GET', 'https://10.0.0.1/internal');
 
         self::assertSame('INTERNAL', $response->getContent());
-        self::assertSame('http://10.0.0.1/internal', $this->upstream->requests[0]['url']);
+        self::assertSame('https://10.0.0.1/internal', $this->upstream->requests[0]['url']);
     }
 }
