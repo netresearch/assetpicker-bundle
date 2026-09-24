@@ -3,7 +3,7 @@
     "description": "Symfony Bundle for [AssetPicker](https://github.com/netresearch/assetpicker)",
     "type": "library",
     "require": {
-        "netresearch/assetpicker": "^1.2.2"
+        "netresearch/assetpicker": "^2.0.0"
     },
     "license": "MIT",
     "authors": [
