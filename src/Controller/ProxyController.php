@@ -1,46 +1,42 @@
 <?php
+
 /**
  * See class comment
  *
- * PHP Version 5
- *
  * @category Netresearch
- * @package  Netresearch\AssetPickerBundle\DependencyInjection
+ * @package  Netresearch\AssetPickerBundle\Controller
  * @author   Christian Opitz <christian.opitz@netresearch.de>
- * @license  http://www.netresearch.de Netresearch Copyright
- * @link     http://www.netresearch.de
+ * @license  https://opensource.org/licenses/MIT MIT
+ * @link     https://github.com/netresearch/assetpicker-bundle
  */
+
+declare(strict_types=1);
 
 namespace Netresearch\AssetPickerBundle\Controller;
 
-use Symfony\Bundle\FrameworkBundle\Controller\Controller;
-use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
-use Sensio\Bundle\FrameworkExtraBundle\Configuration\Template;
+use Netresearch\AssetPicker\Proxy;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 
 /**
- * Class ProxyController
- *
- * @category Netresearch
- * @package  Netresearch\AssetPickerBundle\DependencyInjection
- * @author   Christian Opitz <christian.opitz@netresearch.de>
- * @license  http://www.netresearch.de Netresearch Copyright
- * @link     http://www.netresearch.de
+ * Forwards the request to the URL given in the `to` query parameter and
+ * returns the upstream response, for storages that send no CORS headers.
  */
-class ProxyController extends Controller
+final class ProxyController
 {
-    /**
-     * @param Request $request
-     */
-    public function indexAction(Request $request)
+    public function __construct(
+        private readonly Proxy $proxy,
+    ) {
+    }
+
+    public function __invoke(Request $request): Response
     {
-        if ($request->query->has('to')) {
-            $proxyTo = $request->query->get('to');
-            $request->query->remove('to');
-            $proxy = new \Netresearch\AssetPicker\Proxy();
-            return $proxy->forward($request)->to($proxyTo);
-        } else {
-            throw new \Exception('No target provided');
+        $target = $request->query->getString('to');
+        if ($target === '') {
+            throw new BadRequestHttpException('No target provided');
         }
+
+        return $this->proxy->forward($request, $target);
     }
 }
